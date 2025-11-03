@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Go/Baduk – Single‑File Responsive Board</title>
+  <style>
+    :root{
+      --bg:#0f1115; --panel:#171a21; --muted:#2a2f3a; --text:#e9edf1; --sub:#a8b3c7; --black:#111; --white:#f4f6fb;
+      --b: #111; --w: #f6f8ff; --accent:#4cc9f0; --accent2:#ffd166; --ok:#2bd576; --danger:#ff6b6b;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0; font-family: ui-sans-serif, -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,"Apple Color Emoji","Segoe UI Emoji";
+      color:var(--text); background:linear-gradient(180deg,#0b0e13, #0f1115 30%, #0f1115);
+      display:flex; flex-direction:column; gap:12px;
+    }
+    header{
+      padding:10px 16px; display:flex; gap:12px; align-items:center; justify-content:space-between; backdrop-filter:saturate(120%) blur(6px);
+      background:rgba(15,17,21,.6); border-bottom:1px solid #1e2230; position:sticky; top:0; z-index:5;
+    }
+    header h1{font-size:clamp(16px,2.4vw,22px); margin:0; letter-spacing:.2px}
+    .badge{font-size:12px; padding:2px 8px; border:1px solid #2b3142; border-radius:999px; color:#c8d2e3}
+
+    .shell{display:grid; grid-template-columns: 1fr; gap:12px; padding:0 16px 16px}
+    @media(min-width:980px){.shell{grid-template-columns: 1.2fr .8fr}}
+
+    .boardWrap{background:radial-gradient(1200px 200px at 50% -60%, rgba(255,255,255,.06), transparent 70%), var(--panel);
+      border-radius:16px; border:1px solid #222636; padding:12px; display:flex; flex-direction:column; gap:10px;
+      box-shadow: 0 10px 30px rgba(0,0,0,.35);
+    }
+    .toolbar{display:flex; flex-wrap:wrap; gap:8px; align-items:center}
+    .toolbar .group{display:flex; gap:8px; align-items:center; background:#121620; border:1px solid #242a3a; padding:8px; border-radius:12px}
+    label{font-size:12px; color:var(--sub)}
+    input, select{color:var(--text); background:#0e1320; border:1px solid #2a3143; border-radius:10px; padding:6px 8px; outline:none}
+    input[type=number]{width:80px}
+    button{
+      padding:8px 12px; border-radius:12px; border:1px solid #2a3143; background:#151a28; color:var(--text); cursor:pointer;
+      transition:transform .05s ease, background .2s ease, border .2s ease;
+    }
+    button:hover{background:#1c2233}
+    button:active{transform:translateY(1px)}
+    .primary{border-color:#2c6f87; background:linear-gradient(180deg,#162231,#0f1824);}
+    .danger{border-color:#5b2626; background:linear-gradient(180deg,#2a1518,#1b0f12)}
+    .ok{border-color:#1f6a3a; background:linear-gradient(180deg,#142318,#0f1b14)}
+
+    .canvasBox{position:relative; width:100%; aspect-ratio:1/1; border-radius:14px; overflow:hidden; border:1px solid #242a38; background: #d0a66b;}
+    /* Wooden texture hint */
+    .canvasBox::before{content:""; position:absolute; inset:0; background: repeating-linear-gradient( 8deg, rgba(0,0,0,.03), rgba(0,0,0,.03) 2px, rgba(255,255,255,.02) 2px, rgba(255,255,255,.02) 6px ); pointer-events:none}
+    canvas{width:100%; height:100%}
+
+    .side{display:flex; flex-direction:column; gap:12px}
+    .panel{background:var(--panel); border:1px solid #222636; border-radius:16px; padding:12px; box-shadow: 0 8px 24px rgba(0,0,0,.35)}
+    .timers{display:grid; grid-template-columns:1fr 1fr; gap:10px}
+    .clock{padding:10px; border-radius:12px; border:1px solid #273045; background:#111625; display:flex; flex-direction:column; gap:6px}
+    .clock.active{outline:2px solid var(--accent); box-shadow:0 0 0 4px rgba(76,201,240,.15) inset}
+    .clock h3{margin:0; font-size:14px; color:#c8d2e3}
+    .clock .big{font-variant-numeric:tabular-nums; font-size:clamp(20px,3.8vw,28px); letter-spacing:.5px}
+    .kda{display:flex; gap:12px; align-items:center; font-variant-numeric: tabular-nums}
+
+    .legend{display:flex; gap:12px; align-items:center; flex-wrap:wrap; font-size:13px; color:#c8d2e3}
+    .dot{width:14px; height:14px; border-radius:50%}
+    .dot.black{background:#000}
+    .dot.white{background:#fff; border:1px solid #cfd5ea}
+    .pill{padding:4px 8px; border-radius:999px; border:1px solid #2a3143; background:#121827; font-size:12px}
+
+    .footer{opacity:.8; font-size:12px; text-align:center; padding:6px 0 14px}
+
+    .hint{position:absolute; top:8px; left:8px; background:rgba(0,0,0,.55); color:#fff; font-size:12px; padding:4px 8px; border-radius:6px; pointer-events:none}
+    .coordPopup{position:absolute; padding:6px 8px; border-radius:8px; background:rgba(15,20,30,.92); color:#fff; font-size:14px; border:1px solid #3a445e; pointer-events:none; transform:translate(-50%,-120%); white-space:nowrap}
+
+    .scoreRow{display:flex; gap:12px; flex-wrap:wrap; align-items:center}
+  </style>
+</head>
+<body>
+<header>
+  <h1>Go/Baduk – กระดานโกะบนเว็บ (ไฟล์เดียวใช้งานได้เลย)</h1>
+  <span class="badge">Responsive · Offline capable · No libs</span>
+</header>
+
+<div class="shell">
+  <section class="boardWrap">
+    <div class="toolbar">
+      <div class="group">
+        <label>ขนาดกระดาน</label>
+        <select id="sizeSel">
+          <option value="9">9×9</option>
+          <option value="13">13×13</option>
+          <option value="19" selected>19×19 (มาตรฐาน)</option>
+          <option value="custom">กำหนดเอง</option>
+        </select>
+        <input id="sizeCustom" type="number" min="5" max="25" step="1" value="19" title="ระบุขนาดเอง"/>
+        <button id="applySize" class="ok">เริ่มเกมใหม่</button>
+      </div>
+      <div class="group">
+        <label>Komi</label>
+        <input id="komi" type="number" step="0.5" value="6.5"/>
+        <button id="btnNew" title="ล้างกระดาน">New</button>
+        <button id="btnUndo" title="ย้อน 1 เดิน">Undo</button>
+        <button id="btnPass">Pass</button>
+      </div>
+      <div class="group">
+        <label>โหมดคะแนน</label>
+        <button id="btnToggleScore" class="primary">Toggle Territory / Scoring</button>
+        <button id="btnClearDead">Clear Dead Marks</button>
+      </div>
+    </div>
+
+    <div class="canvasBox">
+      <canvas id="board" width="1200" height="1200"></canvas>
+      <div id="hoverCoord" class="coordPopup" style="display:none">A1</div>
+      <div class="hint" id="status">ดำเดินก่อน • คลิกวางหมาก, คลิกซ้ำในโหมดคะแนน = mark ตาย</div>
+    </div>
+
+    <div class="legend">
+      <span class="dot black"></span> ดำ | <span class="dot white"></span> ขาว
+      <span class="pill">Ko (กันกินทบ) แบบพื้นฐาน</span>
+      <span class="pill">Scoring: territory + prisoners + komi</span>
+    </div>
+
+    <div class="panel">
+      <div class="scoreRow">
+        <div>สรุปคะแนน (ประมาณการ):</div>
+        <div id="scoreBlack" class="pill">Black 0</div>
+        <div id="scoreWhite" class="pill">White 0</div>
+        <div id="scoreDetail" class="pill">–</div>
+      </div>
+    </div>
+  </section>
+
+  <aside class="side">
+    <div class="panel">
+      <h3 style="margin:4px 0 10px">ตั้งค่าเวลา (Japanese Byo‑Yomi)</h3>
+      <div class="toolbar">
+        <div class="group">
+          <label>Main (นาที)</label><input id="mainMin" type="number" min="0" value="10">
+          <label>Byo periods</label><input id="byoPeriods" type="number" min="0" value="3">
+          <label>Byo (วินาที)</label><input id="byoSec" type="number" min="1" value="30">
+        </div>
+        <div class="group">
+          <button id="btnClockStart" class="primary">เริ่ม/หยุด นาฬิกา</button>
+          <button id="btnClockReset">รีเซ็ตเวลา</button>
+        </div>
+      </div>
+      <div class="timers">
+        <div id="clockB" class="clock active">
+          <h3>Black</h3>
+          <div class="big" id="timeB">10:00.0</div>
+          <div class="kda">Periods: <span id="pB">3</span></div>
+        </div>
+        <div id="clockW" class="clock">
+          <h3>White</h3>
+          <div class="big" id="timeW">10:00.0</div>
+          <div class="kda">Periods: <span id="pW">3</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3 style="margin:4px 0 10px">ประวัติเดิน (Moves)</h3>
+      <ol id="moves" style="max-height:40vh; overflow:auto; padding-left:18px; margin:0"></ol>
+    </div>
+
+    <div class="panel">
+      <h3 style="margin:4px 0 10px">หมายเหตุ</h3>
+      <ul style="margin:0 0 0 16px; color:#c8d2e3; font-size:13px">
+        <li>โหมดคะแนนคำนวณ territory อัตโนมัติ (ประมาณการ) กรณี seki ซับซ้อนอาจต้อง mark หมากที่ตาย/เป็นเชลยด้วยตนเอง</li>
+        <li>ไฟล์นี้ไฟล์เดียว สามารถเปิดบน GitHub Pages / Cloudflare Pages / Static host ใด ๆ ได้ทันที</li>
+        <li>รองรับ 9×9 · 13×13 · 19×19 และกำหนดเอง 5–25</li>
+      </ul>
+    </div>
+  </aside>
+</div>
+
+<div class="footer">© Single‑file Go board. ใช้ได้ทั้ง Desktop/Mobile</div>
+
+<script>
+(() => {
+  // ======= Utilities =======
+  const $ = (id) => document.getElementById(id);
+  const boardEl = $("board");
+  const ctx = boardEl.getContext("2d");
+  const statusEl = $("status");
+  const hoverCoord = $("hoverCoord");
+  const movesEl = $("moves");
+
+  const sizeSel = $("sizeSel");
+  const sizeCustom = $("sizeCustom");
+  const applySize = $("applySize");
+  const btnNew = $("btnNew");
+  const btnUndo = $("btnUndo");
+  const btnPass = $("btnPass");
+  const btnToggleScore = $("btnToggleScore");
+  const btnClearDead = $("btnClearDead");
+  const komiInput = $("komi");
+
+  const mainMin = $("mainMin");
+  const byoPeriods = $("byoPeriods");
+  const byoSec = $("byoSec");
+  const btnClockStart = $("btnClockStart");
+  const btnClockReset = $("btnClockReset");
+  const timeB = $("timeB");
+  const timeW = $("timeW");
+  const pB = $("pB");
+  const pW = $("pW");
+  const clockB = $("clockB");
+  const clockW = $("clockW");
+
+  const scoreBlack = $("scoreBlack");
+  const scoreWhite = $("scoreWhite");
+  const scoreDetail = $("scoreDetail");
+
+  function clamp(v, lo, hi){ return Math.max(lo, Math.min(hi, v)); }
+
+  // Label letters for coordinates (Go usually skips 'I')
+  const LETTERS = (()=>{
+    const arr = [];
+    for(let i=0;i<26;i++){
+      const ch = String.fromCharCode(65+i);
+      if(ch==='I') continue; // skip I
+      arr.push(ch);
+    }
+    return arr;
+  })();
+
+  // ======= Game State =======
+  let N = 19; // board size
+  let board = []; // 0 empty, 1 black, 2 white
+  let turn = 1; // 1 black, 2 white
+  let moveNum = 0;
+  let history = []; // stack of states for undo: {board, turn, ko, prisoners}
+  let koPoint = null; // simple ko point {x,y} that is forbidden immediately
+  let prisoners = {1:0, 2:0};
+  let scoreMode = false; // toggle territory view / scoring mode
+  let deadMarks = new Set(); // set of key(x,y) stones considered dead (in score mode)
+  let passCount = 0;
+
+  function key(x,y){ return x+","+y; }
+
+  function resetBoard(size=N){
+    N = clamp(parseInt(size||N),5,25);
+    board = Array.from({length:N},()=>Array(N).fill(0));
+    turn = 1; moveNum = 0; history = []; koPoint = null; prisoners={1:0,2:0};
+    scoreMode = false; deadMarks.clear(); passCount=0;
+    movesEl.innerHTML = "";
+    updateStatus();
+    draw();
+    updateScorePreview();
+    updateActiveClockUI();
+  }
+
+  function clone2D(arr){ return arr.map(r=>r.slice()); }
+
+  function pushHistory(){
+    history.push({board: clone2D(board), turn, ko: koPoint?{...koPoint}:null, prisoners:{...prisoners}});
+  }
+
+  function popHistory(){
+    const h = history.pop();
+    if(!h) return;
+    board = h.board; turn = h.turn; koPoint = h.ko; prisoners = h.prisoners; moveNum = Math.max(0, moveNum-1);
+    passCount = 0; // undo pass status
+    draw(); updateStatus(); updateScorePreview(); updateActiveClockUI();
+    if(movesEl.lastElementChild) movesEl.removeChild(movesEl.lastElementChild);
+  }
+
+  // ======= Board geometry & drawing =======
+  let px = { pad: 42, cell: 0, start: 0, end: 0, star: [] };
+
+  function computeGeom(){
+    const w = boardEl.clientWidth, h = boardEl.clientHeight;
+    const side = Math.min(w,h);
+    boardEl.width = boardEl.height = side * devicePixelRatio;
+    const pad = Math.max(28, Math.min(64, Math.round(side*0.035)));
+    px.pad = pad * devicePixelRatio;
+    const span = boardEl.width - px.pad*2;
+    px.cell = span/(N-1);
+    px.start = px.pad; px.end = boardEl.width - px.pad;
+
+    // star points per standard sizes
+    const stars = [];
+    const starIndex = (n)=>{
+      if(n===9) return [2,4,6];
+      if(n===13) return [3,6,9];
+      if(n===19) return [3,9,15];
+      // generic: 4-4 approximations
+      const t = Math.round((n+1)/5);
+      return [t, Math.floor(n/2), n+1-t-1];
+    };
+    const idx = starIndex(N);
+    for(const i of idx){ for(const j of idx){ stars.push([i-1,j-1]); } }
+    px.star = stars;
+  }
+
+  function boardToPixel(x,y){ // 0..N-1
+    return [px.start + x*px.cell, px.start + y*px.cell];
+  }
+
+  function pixelToBoard(mx,my){
+    // find nearest intersection
+    const x = Math.round((mx - px.start)/px.cell);
+    const y = Math.round((my - px.start)/px.cell);
+    return [clamp(x,0,N-1), clamp(y,0,N-1)];
+  }
+
+  function draw(){
+    computeGeom();
+    const w = boardEl.width, h = boardEl.height;
+    ctx.clearRect(0,0,w,h);
+
+    // wood background
+    ctx.fillStyle = "#d7b074"; ctx.fillRect(0,0,w,h);
+
+    // grid lines
+    ctx.strokeStyle = "#000"; ctx.lineWidth = Math.max(1, Math.round(px.cell*0.04));
+    for(let i=0;i<N;i++){
+      const [x0,y0] = boardToPixel(0,i);
+      const [x1,y1] = boardToPixel(N-1,i);
+      ctx.beginPath(); ctx.moveTo(x0,y0); ctx.lineTo(x1,y1); ctx.stroke();
+      const [xa,ya] = boardToPixel(i,0);
+      const [xb,yb] = boardToPixel(i,N-1);
+      ctx.beginPath(); ctx.moveTo(xa,ya); ctx.lineTo(xb,yb); ctx.stroke();
+    }
+
+    // star points
+    const r = Math.max(2, Math.round(px.cell*0.12));
+    ctx.fillStyle = "#000";
+    for(const [sx,sy] of px.star){
+      const [cx,cy] = boardToPixel(sx,sy);
+      ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.fill();
+    }
+
+    // territory overlay if scoreMode
+    if(scoreMode){ drawTerritoryOverlay(); }
+
+    // stones
+    for(let y=0;y<N;y++){
+      for(let x=0;x<N;x++){
+        const s = board[y][x]; if(!s) continue;
+        drawStone(x,y,s, deadMarks.has(key(x,y)));
+      }
+    }
+
+    // coordinates at edges
+    drawCoordinates();
+  }
+
+  function drawStone(x,y,color,isDead){
+    const [cx,cy] = boardToPixel(x,y);
+    const r = px.cell*0.45;
+    const grd = ctx.createRadialGradient(cx-r*0.3, cy-r*0.35, r*0.1, cx, cy, r);
+    if(color===1){ grd.addColorStop(0,"#555"); grd.addColorStop(1,"#000"); }
+    else { grd.addColorStop(0,"#fff"); grd.addColorStop(1,"#cfd5ea"); }
+    ctx.fillStyle = grd; ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.fill();
+
+    if(isDead){ // red X
+      ctx.strokeStyle = "#cc3344"; ctx.lineWidth = Math.max(2, px.cell*0.08);
+      ctx.beginPath(); ctx.moveTo(cx-r*0.6, cy-r*0.6); ctx.lineTo(cx+r*0.6, cy+r*0.6); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx+r*0.6, cy-r*0.6); ctx.lineTo(cx-r*0.6, cy+r*0.6); ctx.stroke();
+    }
+  }
+
+  function drawCoordinates(){
+    ctx.save();
+    ctx.fillStyle = "#111"; ctx.globalAlpha = .85; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    const f = Math.max(10, Math.round(px.cell*0.32));
+    ctx.font = `bold ${f}px system-ui, -apple-system, Segoe UI, Roboto`;
+
+    for(let i=0;i<N;i++){
+      const letter = LETTERS[i];
+      const [x0,y0] = boardToPixel(i,0);
+      const [x1,y1] = boardToPixel(i,N-1);
+      ctx.fillText(letter, x0, px.start - f*0.9);
+      ctx.fillText(letter, x1, px.end + f*0.9);
+
+      const num = (i+1).toString();
+      const [xa,ya] = boardToPixel(0,i);
+      const [xb,yb] = boardToPixel(N-1,i);
+      ctx.fillText(num, px.start - f*0.9, ya);
+      ctx.fillText(num, px.end + f*0.9, yb);
+    }
+    ctx.restore();
+  }
+
+  // ======= Rules helpers =======
+  function neighbors(x,y){
+    const res=[]; if(x>0)res.push([x-1,y]); if(x<N-1)res.push([x+1,y]); if(y>0)res.push([x,y-1]); if(y<N-1)res.push([x,y+1]); return res;
+  }
+  function groupAt(x,y){
+    const color = board[y][x]; if(!color) return {stones:[], libs:new Set(), color:0};
+    const q=[[x,y]]; const seen=new Set([key(x,y)]); const stones=[]; const libs=new Set();
+    while(q.length){
+      const [cx,cy]=q.pop(); stones.push([cx,cy]);
+      for(const [nx,ny] of neighbors(cx,cy)){
+        const k=key(nx,ny);
+        if(board[ny][nx]===0){ libs.add(k); }
+        else if(board[ny][nx]===color && !seen.has(k)){ seen.add(k); q.push([nx,ny]); }
+      }
+    }
+    return {stones, libs, color};
+  }
+
+  function removeStones(stones){
+    for(const [x,y] of stones) board[y][x]=0;
+  }
+
+  function placeStone(x,y,color){
+    if(board[y][x]!==0) return false;
+    if(koPoint && koPoint.x===x && koPoint.y===y) return false;
+
+    pushHistory();
+    board[y][x]=color; koPoint=null; // reset ko by default
+
+    const opp = color===1?2:1; let totalCaptured=0; let lastCapturedGroup=null;
+    for(const [nx,ny] of neighbors(x,y)){
+      if(board[ny][nx]===opp){
+        const g = groupAt(nx,ny);
+        if(g.libs.size===0){ removeStones(g.stones); totalCaptured += g.stones.length; lastCapturedGroup = g; }
+      }
+    }
+    // suicide check
+    const gSelf = groupAt(x,y);
+    if(gSelf.libs.size===0){
+      if(totalCaptured===0){ // illegal suicide, revert
+        const h = history.pop(); board = h.board; turn = h.turn; koPoint = h.ko; prisoners = h.prisoners; return false;
+      }
+    }
+
+    // simple ko: when captured exactly one stone and our placed stone has one liberty afterwards at that position
+    if(totalCaptured===1 && lastCapturedGroup){
+      // ko at the position of the captured stone
+      koPoint = {x: lastCapturedGroup.stones[0][0], y: lastCapturedGroup.stones[0][1]};
+    }
+
+    prisoners[color] += totalCaptured;
+    moveNum++; passCount=0; addMoveToList(x,y,color,false);
+    turn = opp; onTurnSwitch();
+    draw(); updateStatus(); updateScorePreview();
+    return true;
+  }
+
+  function pass(){
+    pushHistory(); moveNum++; passCount++; addMoveToList(-1,-1,turn,true);
+    turn = (turn===1?2:1); onTurnSwitch();
+    if(passCount>=2){ scoreMode=true; updateStatus(); }
+    draw(); updateScorePreview();
+  }
+
+  function addMoveToList(x,y,color,isPass){
+    const li = document.createElement('li');
+    li.textContent = (color===1?'B':'W') + (isPass? ' pass' : ' ' + coordLabel(x,y));
+    movesEl.appendChild(li);
+    li.scrollIntoView({block:'nearest'});
+  }
+
+  function coordLabel(x,y){ return LETTERS[x] + (y+1); }
+
+  function updateStatus(){
+    const t = turn===1? 'ดำเดิน' : 'ขาวเดิน';
+    statusEl.textContent = (scoreMode? 'โหมดคะแนน: แตะหินเพื่อ mark ตาย/คืนชีพ • ' : '') + t;
+  }
+
+  // ======= Scoring / Territory =======
+  function floodEmpty(x,y,visited){
+    const q=[[x,y]]; const empty=[]; const borderColors=new Set(); visited.add(key(x,y));
+    while(q.length){
+      const [cx,cy]=q.pop(); empty.push([cx,cy]);
+      for(const [nx,ny] of neighbors(cx,cy)){
+        const k=key(nx,ny);
+        const s=board[ny][nx];
+        if(s===0){ if(!visited.has(k)){ visited.add(k); q.push([nx,ny]); } }
+        else borderColors.add(s);
+      }
+    }
+    return {empty, borderColors};
+  }
+
+  function computeTerritory(){
+    const visited = new Set();
+    const terr = {1:0, 2:0, neutral:0, owner: {}}; // owner map key->1/2/0
+    for(let y=0;y<N;y++){
+      for(let x=0;x<N;x++){
+        if(board[y][x]===0){
+          const k=key(x,y); if(visited.has(k)) continue;
+          const {empty, borderColors} = floodEmpty(x,y,visited);
+          let owner=0; if(borderColors.size===1){ owner = [...borderColors][0]; }
+          for(const [ex,ey] of empty){ terr.owner[key(ex,ey)] = owner; }
+          if(owner===1) terr[1]+=empty.length; else if(owner===2) terr[2]+=empty.length; else terr.neutral+=empty.length;
+        }
+      }
+    }
+    return terr;
+  }
+
+  function drawTerritoryOverlay(){
+    const terr = computeTerritory();
+    // shaded rects
+    for(const id in terr.owner){
+      const own = terr.owner[id]; if(own===0) continue;
+      const [sx,sy] = id.split(",").map(Number);
+      const [cx,cy] = boardToPixel(sx,sy);
+      ctx.save();
+      ctx.globalAlpha = 0.22;
+      ctx.fillStyle = own===1? "#2bd576" : "#4cc9f0"; // green for black, blue for white
+      ctx.beginPath(); ctx.arc(cx,cy, px.cell*0.38, 0, Math.PI*2); ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  function updateScorePreview(){
+    const komi = parseFloat(komiInput.value)||0;
+    const terr = computeTerritory();
+    let deadB=0, deadW=0;
+    // dead marks add territory to opponent and count as prisoners
+    deadMarks.forEach(id=>{
+      const [x,y]=id.split(",").map(Number);
+      const c = board[y][x]; if(c===1) deadB++; else if(c===2) deadW++;
+    });
+    const totalB = terr[1] + prisoners[1] + deadW;
+    const totalW = terr[2] + prisoners[2] + deadB + komi;
+
+    scoreBlack.textContent = `Black ${totalB}`;
+    scoreWhite.textContent = `White ${totalW.toFixed(1)}`;
+    scoreDetail.textContent = `Terr B:${terr[1]} W:${terr[2]} | Pris B:${prisoners[1]} W:${prisoners[2]} | Dead B:${deadB} W:${deadW} | Komi:${komi}`;
+  }
+
+  // ======= Mouse interactions =======
+  let hover = {x:-1,y:-1};
+  boardEl.addEventListener('mousemove', (e)=>{
+    const rect = boardEl.getBoundingClientRect();
+    const mx = (e.clientX - rect.left) * devicePixelRatio;
+    const my = (e.clientY - rect.top) * devicePixelRatio;
+    const [x,y] = pixelToBoard(mx,my);
+    hover = {x,y};
+    // Popup coordinate near cursor
+    hoverCoord.style.display = 'block';
+    hoverCoord.textContent = coordLabel(x,y);
+    hoverCoord.style.left = `${e.clientX}px`;
+    hoverCoord.style.top = `${e.clientY}px`;
+    draw();
+    // highlight hover intersection
+    ctx.save();
+    const [cx,cy]=boardToPixel(x,y);
+    ctx.globalAlpha=.25; ctx.fillStyle = '#000';
+    ctx.beginPath(); ctx.arc(cx,cy, px.cell*0.36,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+  });
+  boardEl.addEventListener('mouseleave', ()=>{ hover={x:-1,y:-1}; hoverCoord.style.display='none'; draw(); });
+
+  boardEl.addEventListener('click', (e)=>{
+    const rect = boardEl.getBoundingClientRect();
+    const mx = (e.clientX - rect.left) * devicePixelRatio;
+    const my = (e.clientY - rect.top) * devicePixelRatio;
+    const [x,y] = pixelToBoard(mx,my);
+    if(scoreMode){ // toggle dead/alive for stones
+      if(board[y][x]!==0){
+        const k = key(x,y);
+        if(deadMarks.has(k)) deadMarks.delete(k); else deadMarks.add(k);
+        draw(); updateScorePreview();
+      }
+      return;
+    }
+    placeStone(x,y,turn);
+  });
+
+  // ======= Controls =======
+  applySize.addEventListener('click', ()=>{
+    const sel = sizeSel.value;
+    const val = sel==='custom'? parseInt(sizeCustom.value) : parseInt(sel);
+    resetBoard(val);
+  });
+  btnNew.addEventListener('click', ()=> resetBoard(N));
+  btnUndo.addEventListener('click', popHistory);
+  btnPass.addEventListener('click', pass);
+  btnToggleScore.addEventListener('click', ()=>{ scoreMode=!scoreMode; updateStatus(); draw(); updateScorePreview(); });
+  btnClearDead.addEventListener('click', ()=>{ deadMarks.clear(); updateScorePreview(); draw(); });
+
+  // ======= Clocks (Japanese Byo‑Yomi approximation) =======
+  let clock = { running:false, lastTs:0,
+    B:{mainMs:10*60*1000, byoPeriods:3, byoSec:30, usedPeriods:0, inByo:false, moveStart:0},
+    W:{mainMs:10*60*1000, byoPeriods:3, byoSec:30, usedPeriods:0, inByo:false, moveStart:0}
+  };
+
+  function fmt(ms){
+    const neg = ms<0; ms = Math.max(0, ms);
+    const m = Math.floor(ms/60000); const s = Math.floor((ms%60000)/1000); const t = Math.floor((ms%1000)/100);
+    return `${neg?'-':''}${m}:${String(s).padStart(2,'0')}.${t}`;
+  }
+
+  function applyClockSettings(){
+    const mainMs = (parseInt(mainMin.value)||0)*60*1000;
+    const periods = clamp(parseInt(byoPeriods.value)||0,0,20);
+    const byos = clamp(parseInt(byoSec.value)||1,1,120);
+    clock.B.mainMs = clock.W.mainMs = mainMs;
+    clock.B.byoPeriods = clock.W.byoPeriods = periods;
+    clock.B.byoSec = clock.W.byoSec = byos;
+    clock.B.usedPeriods = clock.W.usedPeriods = 0;
+    clock.B.inByo = clock.W.inByo = mainMs===0;
+    clock.B.moveStart = clock.W.moveStart = performance.now();
+    updateClockUI();
+  }
+
+  function updateClockUI(){
+    timeB.textContent = fmt(clock.B.mainMs);
+    timeW.textContent = fmt(clock.W.mainMs);
+    pB.textContent = Math.max(0, clock.B.byoPeriods - clock.B.usedPeriods);
+    pW.textContent = Math.max(0, clock.W.byoPeriods - clock.W.usedPeriods);
+  }
+
+  function updateActiveClockUI(){
+    clockB.classList.toggle('active', turn===1);
+    clockW.classList.toggle('active', turn===2);
+  }
+
+  function onTurnSwitch(){
+    if(!clock.running){ updateActiveClockUI(); return; }
+    const now = performance.now();
+    const active = (turn===2?'B':'W'); // the player who just moved
+    const dur = now - clock[active].moveStart; // time spent on that move
+
+    if(clock[active].mainMs>0){
+      clock[active].mainMs = Math.max(0, clock[active].mainMs - dur);
+      if(clock[active].mainMs===0){ clock[active].inByo = true; }
+    } else { // in byo‑yomi: consume period if exceeded
+      if(dur > clock[active].byoSec*1000){ clock[active].usedPeriods++; }
+      if(clock[active].usedPeriods > clock[active].byoPeriods){
+        clock.running=false; alert((active==='B'?'Black':'White')+" time out");
+      }
+    }
+
+    // start timer for the other player now
+    const next = (turn===1?'B':'W');
+    clock[next].moveStart = now;
+    updateClockUI(); updateActiveClockUI();
+  }
+
+  function tick(){
+    if(!clock.running) return;
+    const now = performance.now();
+    const side = (turn===1?'B':'W');
+    let remain = clock[side].mainMs;
+    if(remain>0){
+      remain = Math.max(0, remain - (now - clock[side].moveStart));
+      time(side).textContent = fmt(remain);
+    } else {
+      const durMove = now - clock[side].moveStart; // move running duration
+      const secLeft = Math.max(0, clock[side].byoSec*1000 - durMove);
+      time(side).textContent = fmt(secLeft);
+    }
+    requestAnimationFrame(tick);
+  }
+
+  function time(side){ return side==='B'? timeB : timeW; }
+
+  btnClockStart.addEventListener('click', ()=>{
+    clock.running = !clock.running;
+    if(clock.running){
+      const side = (turn===1?'B':'W');
+      clock[side].moveStart = performance.now();
+      requestAnimationFrame(tick);
+    }
+  });
+  btnClockReset.addEventListener('click', ()=>{ clock.running=false; applyClockSettings(); updateActiveClockUI(); });
+
+  // ======= Init =======
+  window.addEventListener('resize', draw);
+  sizeSel.addEventListener('change', ()=>{
+    sizeCustom.style.display = sizeSel.value==='custom'? 'inline-block':'none';
+  });
+
+  applyClockSettings();
+  resetBoard(19);
+})();
+</script>
+</body>
+</html>
